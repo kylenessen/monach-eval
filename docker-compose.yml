@@ -57,8 +57,7 @@ services:
     restart: unless-stopped
     environment:
       - LABEL_STUDIO_URL=http://label-studio:8080
-      - LABEL_STUDIO_USERNAME=${LABEL_STUDIO_USERNAME}
-      - LABEL_STUDIO_PASSWORD=${LABEL_STUDIO_PASSWORD}
+      - LABEL_STUDIO_API_TOKEN=${LABEL_STUDIO_API_TOKEN}
       - LABEL_STUDIO_PROJECT_ID=${LABEL_STUDIO_PROJECT_ID:-1}
     volumes:
       - ./data:/app/data

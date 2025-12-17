@@ -5,7 +5,6 @@ import requests
 import logging
 from pathlib import Path
 from dotenv import load_dotenv
-from label_studio_sdk import Client
 import shutil
 
 # Load environment variables
@@ -14,9 +13,8 @@ load_dotenv()
 # Configuration
 INAT_API_URL = "https://api.inaturalist.org/v1/observations"
 MONARCH_TAXON_ID = 48662
-PROJECT_ID = os.getenv("LABEL_STUDIO_PROJECT_ID")
-LS_USERNAME = os.getenv("LABEL_STUDIO_USERNAME")
-LS_PASSWORD = os.getenv("LABEL_STUDIO_PASSWORD")
+PROJECT_ID = os.getenv("LABEL_STUDIO_PROJECT_ID", "1")
+LS_API_TOKEN = os.getenv("LABEL_STUDIO_API_TOKEN")
 LS_URL = os.getenv("LABEL_STUDIO_URL", "http://localhost:8080")
 IMAGE_DIR = Path("data/images")
 PROCESSED_LOG = Path("data/processed_observations.txt")
@@ -30,6 +28,7 @@ IMAGE_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def load_processed_ids():
+    """Load the set of already processed observation IDs."""
     if PROCESSED_LOG.is_dir():
         logger.warning(f"{PROCESSED_LOG} is a directory (Docker volume error). Removing it...")
         shutil.rmtree(PROCESSED_LOG)
@@ -41,6 +40,7 @@ def load_processed_ids():
 
 
 def save_processed_id(obs_id):
+    """Save a processed observation ID to the log file."""
     with open(PROCESSED_LOG, "a") as f:
         f.write(f"{obs_id}\n")
 
@@ -98,62 +98,46 @@ def download_image(url, obs_id):
         return None
 
 
-def get_ls_client():
-    """Get an authenticated Label Studio client using username/password."""
-    if not LS_USERNAME or not LS_PASSWORD:
-        logger.error("Label Studio credentials not configured!")
-        return None
-
-    try:
-        logger.info(f"Authenticating with username: {LS_USERNAME}")
-        ls = Client(url=LS_URL, email=LS_USERNAME, password=LS_PASSWORD)
-        return ls
-    except Exception as e:
-        logger.error(f"Authentication failed: {e}")
-        return None
-
-
 def check_label_studio_connection():
-    """Check if Label Studio is reachable and credentials are valid."""
+    """Check if Label Studio is reachable and API token is valid."""
+    if not LS_API_TOKEN:
+        return False, "No API token configured (set LABEL_STUDIO_API_TOKEN)"
+
     try:
-        # First check if the server is up
+        # Check server health
         response = requests.get(f"{LS_URL}/api/version", timeout=10)
         if response.status_code != 200:
             return False, f"Server returned {response.status_code}"
 
-        # Get authenticated client
-        ls = get_ls_client()
-        if not ls:
-            return False, "No credentials configured (need API_KEY or USERNAME+PASSWORD)"
+        # Test API token by getting project
+        headers = {"Authorization": f"Bearer {LS_API_TOKEN}"}
+        response = requests.get(f"{LS_URL}/api/projects/{PROJECT_ID}", headers=headers, timeout=10)
 
-        # Test connection
-        ls.check_connection()
-        logger.info("SDK check_connection() passed")
+        if response.status_code == 401:
+            return False, "API token is invalid or expired"
+        elif response.status_code == 404:
+            return False, f"Project {PROJECT_ID} not found"
+        elif response.status_code != 200:
+            return False, f"API returned {response.status_code}: {response.text[:200]}"
 
-        # Try to get the project
-        project = ls.get_project(PROJECT_ID)
-        logger.info(f"SDK successfully retrieved project: {project.title if hasattr(project, 'title') else PROJECT_ID}")
-
+        project_data = response.json()
+        logger.info(f"Connected to project: {project_data.get('title', PROJECT_ID)}")
         return True, "Connected successfully"
 
     except requests.exceptions.ConnectionError:
         return False, "Cannot connect to Label Studio"
     except Exception as e:
-        logger.error(f"Connection failed: {type(e).__name__}: {e}")
-        return False, f"Auth failed: {str(e)[:200]}"
+        logger.error(f"Connection check failed: {type(e).__name__}: {e}")
+        return False, str(e)[:200]
 
 
 def sync_to_label_studio(filename, obs_id, obs_data):
-    """Creates a task in Label Studio using the SDK."""
+    """Creates a task in Label Studio using the REST API."""
+    if not LS_API_TOKEN:
+        logger.warning("Label Studio API token not set. Skipping sync.")
+        return False
+
     try:
-        # Get authenticated client
-        ls = get_ls_client()
-        if not ls:
-            logger.warning("Label Studio credentials not set. Skipping sync.")
-            return False
-
-        project = ls.get_project(PROJECT_ID)
-
         # Construct the local path that Label Studio container can access
         image_path = f"/data/images/{filename}"
 
@@ -164,10 +148,25 @@ def sync_to_label_studio(filename, obs_id, obs_data):
             "observed_on": obs_data.get('observed_on'),
         }
 
-        # Import task via SDK
-        project.import_tasks([{"data": task_data}])
-        logger.info(f"Imported task {obs_id} to Project {PROJECT_ID}")
-        return True
+        # Import task via REST API
+        headers = {
+            "Authorization": f"Bearer {LS_API_TOKEN}",
+            "Content-Type": "application/json"
+        }
+
+        response = requests.post(
+            f"{LS_URL}/api/projects/{PROJECT_ID}/import",
+            headers=headers,
+            json=[task_data],
+            timeout=30
+        )
+
+        if response.status_code == 201:
+            logger.info(f"Successfully imported task {obs_id} to Project {PROJECT_ID}")
+            return True
+        else:
+            logger.error(f"Failed to import task {obs_id}: {response.status_code} - {response.text[:200]}")
+            return False
 
     except Exception as e:
         logger.error(f"Failed to sync task {obs_id}: {e}")
@@ -182,8 +181,8 @@ def wait_for_label_studio():
         success, message = check_label_studio_connection()
 
         if success:
-            masked_key = f"{API_KEY[:4]}...{API_KEY[-4:]}" if len(API_KEY) > 8 else "***"
-            logger.info(f"Label Studio connected! (API Key: {masked_key})")
+            masked_token = f"{LS_API_TOKEN[:8]}...{LS_API_TOKEN[-4:]}" if len(LS_API_TOKEN) > 12 else "***"
+            logger.info(f"Label Studio connected! (Token: {masked_token})")
             return
         else:
             logger.warning(f"Connection check failed: {message}. Retrying in 5s...")
