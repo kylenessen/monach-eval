@@ -16,6 +16,8 @@ INAT_API_URL = "https://api.inaturalist.org/v1/observations"
 MONARCH_TAXON_ID = 48662
 PROJECT_ID = os.getenv("LABEL_STUDIO_PROJECT_ID")
 API_KEY = os.getenv("LABEL_STUDIO_API_KEY")
+LS_USERNAME = os.getenv("LABEL_STUDIO_USERNAME")
+LS_PASSWORD = os.getenv("LABEL_STUDIO_PASSWORD")
 LS_URL = os.getenv("LABEL_STUDIO_URL", "http://localhost:8080")
 IMAGE_DIR = Path("data/images")
 PROCESSED_LOG = Path("data/processed_observations.txt")
@@ -97,21 +99,56 @@ def download_image(url, obs_id):
         return None
 
 
-def get_auth_header():
-    """Returns the appropriate Authorization header for the API key."""
-    if not API_KEY or API_KEY == "placeholder":
+def get_api_token_from_login():
+    """Login with username/password and get an API token."""
+    if not LS_USERNAME or not LS_PASSWORD:
         return None
-    # Personal Access Tokens (PATs) are JWTs starting with "eyJ" - use Bearer
-    # Legacy tokens use Token prefix
-    if API_KEY.startswith("eyJ"):
-        return {"Authorization": f"Bearer {API_KEY}"}
-    return {"Authorization": f"Token {API_KEY}"}
+
+    try:
+        logger.info(f"Logging in as {LS_USERNAME} to get API token...")
+        response = requests.post(
+            f"{LS_URL}/api/login",
+            json={"email": LS_USERNAME, "password": LS_PASSWORD},
+            timeout=10
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+            token = data.get("token")
+            if token:
+                logger.info(f"Login successful! Got API token: {token[:10]}...")
+                return token
+            else:
+                logger.error(f"Login response missing token: {data}")
+                return None
+        else:
+            logger.error(f"Login failed: {response.status_code} - {response.text[:200]}")
+            return None
+
+    except Exception as e:
+        logger.error(f"Login error: {e}")
+        return None
+
+
+def get_working_api_key():
+    """Get a working API key, trying multiple methods."""
+    # Try provided API key first
+    if API_KEY and API_KEY != "placeholder":
+        return API_KEY
+
+    # Fall back to username/password login
+    token = get_api_token_from_login()
+    if token:
+        return token
+
+    return None
 
 
 def check_label_studio_connection():
     """Check if Label Studio is reachable and credentials are valid."""
-    if not API_KEY or API_KEY == "placeholder":
-        return False, "API key not configured"
+    api_key = get_working_api_key()
+    if not api_key:
+        return False, "No credentials configured (need API_KEY or USERNAME+PASSWORD)"
 
     try:
         # First check if the server is up
@@ -120,8 +157,8 @@ def check_label_studio_connection():
             return False, f"Server returned {response.status_code}"
 
         # Try using the SDK (it handles auth automatically)
-        logger.info(f"Testing SDK auth with token: {API_KEY[:10]}...{API_KEY[-4:]}")
-        ls = Client(url=LS_URL, api_key=API_KEY)
+        logger.info(f"Testing SDK auth with token: {api_key[:10]}...{api_key[-4:]}")
+        ls = Client(url=LS_URL, api_key=api_key)
 
         # Test connection
         ls.check_connection()
@@ -142,13 +179,14 @@ def check_label_studio_connection():
 
 def sync_to_label_studio(filename, obs_id, obs_data):
     """Creates a task in Label Studio using the SDK."""
-    if not API_KEY or API_KEY == "placeholder":
+    api_key = get_working_api_key()
+    if not api_key:
         logger.warning("Label Studio credentials not set. Skipping sync.")
         return False
 
     try:
         # Create SDK client
-        ls = Client(url=LS_URL, api_key=API_KEY)
+        ls = Client(url=LS_URL, api_key=api_key)
         project = ls.get_project(PROJECT_ID)
 
         # Construct the local path that Label Studio container can access
