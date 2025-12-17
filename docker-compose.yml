@@ -55,7 +55,6 @@ services:
       - LABEL_STUDIO_API_KEY=${LABEL_STUDIO_API_KEY}
       - LABEL_STUDIO_PROJECT_ID=${LABEL_STUDIO_PROJECT_ID}
     volumes:
-      - ./data/images:/app/data/images
-      - ./data/processed_observations.txt:/app/data/processed_observations.txt
+      - ./data:/app/data
     depends_on:
       - label-studio
