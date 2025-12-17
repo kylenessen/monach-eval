@@ -5,6 +5,7 @@ import requests
 import logging
 from pathlib import Path
 from dotenv import load_dotenv
+from label_studio_sdk import Client
 import shutil
 
 # Load environment variables
@@ -109,16 +110,7 @@ def get_auth_header():
 
 def check_label_studio_connection():
     """Check if Label Studio is reachable and credentials are valid."""
-    headers = get_auth_header()
-
-    # Debug: Log what we're sending
-    if headers:
-        auth_header = headers.get("Authorization", "")
-        prefix = auth_header.split()[0] if auth_header else "None"
-        token_preview = f"{API_KEY[:10]}...{API_KEY[-4:]}" if API_KEY and len(API_KEY) > 14 else "short"
-        logger.info(f"Auth header prefix: {prefix}, Token preview: {token_preview}")
-    else:
-        logger.warning(f"No auth headers! API_KEY value: {repr(API_KEY)}")
+    if not API_KEY or API_KEY == "placeholder":
         return False, "API key not configured"
 
     try:
@@ -127,61 +119,52 @@ def check_label_studio_connection():
         if response.status_code != 200:
             return False, f"Server returned {response.status_code}"
 
-        # Then verify the API key works
-        logger.info(f"Testing auth against {LS_URL}/api/projects/{PROJECT_ID}")
-        response = requests.get(f"{LS_URL}/api/projects/{PROJECT_ID}", headers=headers, timeout=10)
+        # Try using the SDK (it handles auth automatically)
+        logger.info(f"Testing SDK auth with token: {API_KEY[:10]}...{API_KEY[-4:]}")
+        ls = Client(url=LS_URL, api_key=API_KEY)
 
-        if response.status_code == 401:
-            # Log more details about the failure
-            logger.error(f"401 response body: {response.text[:500]}")
-            return False, "Invalid API token. Generate a new token from Label Studio: Account Settings → Access Token"
-        elif response.status_code == 404:
-            return False, f"Project {PROJECT_ID} not found. Create the project first in Label Studio."
-        elif response.status_code != 200:
-            return False, f"API returned {response.status_code}: {response.text[:200]}"
+        # Test connection
+        ls.check_connection()
+        logger.info("SDK check_connection() passed")
 
-        return True, "Connected successfully"
+        # Try to get the project
+        project = ls.get_project(PROJECT_ID)
+        logger.info(f"SDK successfully retrieved project: {project.title if hasattr(project, 'title') else PROJECT_ID}")
+
+        return True, "Connected successfully with SDK"
 
     except requests.exceptions.ConnectionError:
         return False, "Cannot connect to Label Studio"
     except Exception as e:
-        return False, str(e)
+        logger.error(f"SDK connection failed: {type(e).__name__}: {e}")
+        return False, f"SDK auth failed: {str(e)[:200]}"
 
 
 def sync_to_label_studio(filename, obs_id, obs_data):
-    """Creates a task in Label Studio using direct API calls."""
-    headers = get_auth_header()
-    if not headers:
+    """Creates a task in Label Studio using the SDK."""
+    if not API_KEY or API_KEY == "placeholder":
         logger.warning("Label Studio credentials not set. Skipping sync.")
         return False
 
     try:
+        # Create SDK client
+        ls = Client(url=LS_URL, api_key=API_KEY)
+        project = ls.get_project(PROJECT_ID)
+
         # Construct the local path that Label Studio container can access
         image_path = f"/data/images/{filename}"
 
         task_data = {
-            "data": {
-                "image": image_path,
-                "observation_id": obs_id,
-                "inat_url": obs_data.get('uri'),
-                "observed_on": obs_data.get('observed_on'),
-            }
+            "image": image_path,
+            "observation_id": obs_id,
+            "inat_url": obs_data.get('uri'),
+            "observed_on": obs_data.get('observed_on'),
         }
 
-        # Import task via REST API
-        response = requests.post(
-            f"{LS_URL}/api/projects/{PROJECT_ID}/import",
-            headers=headers,
-            json=[task_data],
-            timeout=30
-        )
-
-        if response.status_code in (200, 201):
-            logger.info(f"Imported task {obs_id} to Project {PROJECT_ID}")
-            return True
-        else:
-            logger.error(f"Failed to import task {obs_id}: {response.status_code} - {response.text[:200]}")
-            return False
+        # Import task via SDK
+        project.import_tasks([{"data": task_data}])
+        logger.info(f"Imported task {obs_id} to Project {PROJECT_ID}")
+        return True
 
     except Exception as e:
         logger.error(f"Failed to sync task {obs_id}: {e}")
