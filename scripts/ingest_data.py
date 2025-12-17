@@ -105,28 +105,73 @@ def download_image(url, obs_id):
         logger.error(f"Error downloading image {url}: {e}")
         return None
 
+def get_ls_client():
+    """
+    Creates and authenticates a Label Studio Client with the correct header fix.
+    """
+    if not API_KEY or API_KEY == "placeholder":
+        return None
+
+    # Determine header prefix based on token format
+    auth_header_name = "Authorization"
+    if API_KEY.startswith("ey"):
+        auth_header_value = f"Bearer {API_KEY}"
+        token_type = "JWT"
+    else:
+        auth_header_value = f"Token {API_KEY}"
+        token_type = "Token"
+
+    ls = Client(url=LS_URL, api_key=API_KEY)
+    
+    # CRITICAL FIX: The SDK resets headers on every request or doesn't use the client's headers safely.
+    # We must monkey-patch the `make_request` method to ensure our header wins.
+    original_make_request = ls.make_request
+
+    def patched_make_request(method, url, *args, **kwargs):
+        # Update the client's headers to ensure our token is used
+        ls.headers.update({auth_header_name: auth_header_value})
+        
+        # Also update the session headers if available, as this is often where requests looks
+        if hasattr(ls, 'session'):
+            ls.session.headers.update({auth_header_name: auth_header_value})
+
+        # Remove 'headers' from kwargs if present to prevent "multiple values for keyword argument 'headers'"
+        if 'headers' in kwargs:
+            _ = kwargs.pop('headers')
+        
+        return original_make_request(method, url, *args, **kwargs)
+
+    # Apply the patch
+    ls.make_request = patched_make_request
+    
+    # Store token type for logging if needed (optional)
+    ls._token_type = token_type
+    return ls
+
 def sync_to_label_studio(filename, obs_id, obs_data):
     """Creates a task in Label Studio."""
-    if not API_KEY or not PROJECT_ID:
+    ls = get_ls_client()
+    if not ls:
         logger.warning("Label Studio credentials not set. Skipping LS sync.")
         return
 
-    ls = Client(url=LS_URL, api_key=API_KEY)
-    project = ls.get_project(PROJECT_ID)
-    
-    # Construct the local URL that Label Studio container can see
-    # e.g., /data/images/12345.jpg matches LABEL_STUDIO_LOCAL_FILES_DOCUMENT_ROOT
-    image_path = f"/data/images/{filename}" 
-    
-    task_data = {
-        "image": image_path,
-        "observation_id": obs_id,
-        "inat_url": obs_data.get('uri'),
-        "observed_on": obs_data.get('observed_on'),
-    }
-    
-    project.import_tasks([{"data": task_data}])
-    logger.info(f"Imported task {obs_id} to Project {PROJECT_ID}")
+    try:
+        project = ls.get_project(PROJECT_ID)
+        
+        # Construct the local URL that Label Studio container can see
+        image_path = f"/data/images/{filename}" 
+        
+        task_data = {
+            "image": image_path,
+            "observation_id": obs_id,
+            "inat_url": obs_data.get('uri'),
+            "observed_on": obs_data.get('observed_on'),
+        }
+        
+        project.import_tasks([{"data": task_data}])
+        logger.info(f"Imported task {obs_id} to Project {PROJECT_ID}")
+    except Exception as e:
+        logger.error(f"Failed to sync task {obs_id}: {e}")
 
 def wait_for_label_studio():
     """Waits for Label Studio to be ready before starting."""
@@ -134,49 +179,15 @@ def wait_for_label_studio():
     
     while True:
         try:
-            # Check if API_KEY is set and valid
-            if not API_KEY or API_KEY == "placeholder":
+            ls = get_ls_client()
+            if not ls:
                 logger.warning("LABEL_STUDIO_API_KEY is not set or is 'placeholder'. Waiting for user to configure it...")
                 time.sleep(10)
                 continue
 
-            # Determine header prefix based on token format
-            # JWTs typically start with 'ey', while legacy headers used 'Token'
-            auth_header_name = "Authorization"
-            if API_KEY.startswith("ey"):
-                auth_header_value = f"Bearer {API_KEY}"
-                logger.info("Detected JWT token. Using 'Bearer' prefix.")
-            else:
-                auth_header_value = f"Token {API_KEY}"
-                logger.info("Detected standard token. Using 'Token' prefix.")
-
-            ls = Client(url=LS_URL, api_key=API_KEY)
-            
-            # CRITICAL FIX: The SDK resets headers on every request or doesn't use the client's headers safely.
-            # We must monkey-patch the `make_request` method to ensure our header wins.
-            original_make_request = ls.make_request
-
-            def patched_make_request(method, url, *args, **kwargs):
-                # Update the client's headers to ensure our token is used
-                ls.headers.update({auth_header_name: auth_header_value})
-                
-                # Also update the session headers if available, as this is often where requests looks
-                if hasattr(ls, 'session'):
-                    ls.session.headers.update({auth_header_name: auth_header_value})
-
-                # Remove 'headers' from kwargs if present to prevent "multiple values for keyword argument 'headers'"
-                # The SDK likely passes 'headers' explicitly to the session method
-                if 'headers' in kwargs:
-                    _ = kwargs.pop('headers')
-                
-                return original_make_request(method, url, *args, **kwargs)
-
-            # Apply the patch
-            ls.make_request = patched_make_request
-
             ls.check_connection()
             masked_key = f"{API_KEY[:4]}...{API_KEY[-4:]}" if len(API_KEY) > 8 else "***"
-            logger.info(f"Label Studio is up and running with valid API Key! (Key: {masked_key})")
+            logger.info(f"Label Studio is up and running with valid API Key! (Key: {masked_key}, Type: {ls._token_type})")
             return
             
         except Exception as e:
