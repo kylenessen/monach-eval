@@ -110,7 +110,15 @@ def get_auth_header():
 def check_label_studio_connection():
     """Check if Label Studio is reachable and credentials are valid."""
     headers = get_auth_header()
-    if not headers:
+
+    # Debug: Log what we're sending
+    if headers:
+        auth_header = headers.get("Authorization", "")
+        prefix = auth_header.split()[0] if auth_header else "None"
+        token_preview = f"{API_KEY[:10]}...{API_KEY[-4:]}" if API_KEY and len(API_KEY) > 14 else "short"
+        logger.info(f"Auth header prefix: {prefix}, Token preview: {token_preview}")
+    else:
+        logger.warning(f"No auth headers! API_KEY value: {repr(API_KEY)}")
         return False, "API key not configured"
 
     try:
@@ -120,8 +128,12 @@ def check_label_studio_connection():
             return False, f"Server returned {response.status_code}"
 
         # Then verify the API key works
+        logger.info(f"Testing auth against {LS_URL}/api/projects/{PROJECT_ID}")
         response = requests.get(f"{LS_URL}/api/projects/{PROJECT_ID}", headers=headers, timeout=10)
+
         if response.status_code == 401:
+            # Log more details about the failure
+            logger.error(f"401 response body: {response.text[:500]}")
             return False, "Invalid API token. Generate a new token from Label Studio: Account Settings → Access Token"
         elif response.status_code == 404:
             return False, f"Project {PROJECT_ID} not found. Create the project first in Label Studio."
