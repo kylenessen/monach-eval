@@ -40,6 +40,7 @@ services:
       - POSTGRES_DB=postgres
     volumes:
       - ./data/postgres-data:/var/lib/postgresql/data
+      - ./schema.sql:/docker-entrypoint-initdb.d/schema.sql
 
   # Cloudflared: Secure remote access
   tunnel:
@@ -50,16 +51,25 @@ services:
     environment:
       - TUNNEL_TOKEN=${TUNNEL_TOKEN}
 
-  # Ingestion Worker: Runs the python script
+  # Python environment for running fetch scripts (on-demand)
+  # Usage: docker-compose run --rm ingestor python scripts/fetch_observations.py -n 50
   ingestor:
     build: .
     container_name: monarch-ingestor
-    restart: unless-stopped
+    restart: "no"
+    profiles:
+      - tools
     environment:
+      - POSTGRES_HOST=db
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=postgres
       - LABEL_STUDIO_URL=http://label-studio:8080
       - LABEL_STUDIO_API_TOKEN=${LABEL_STUDIO_API_TOKEN}
       - LABEL_STUDIO_PROJECT_ID=${LABEL_STUDIO_PROJECT_ID:-1}
     volumes:
       - ./data:/app/data
+      - ./scripts:/app/scripts
     depends_on:
-      - label-studio
+      - db

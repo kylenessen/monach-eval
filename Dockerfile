@@ -2,16 +2,16 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
-# Install system dependencies if needed (none for now)
-
-# Install Python deps
+# Install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy script
-COPY scripts/ingest_data.py .
+# Copy scripts directory
+COPY scripts/ ./scripts/
 
 # Run unbuffered to see logs in Docker
 ENV PYTHONUNBUFFERED=1
 
-CMD ["python", "ingest_data.py"]
+# Default command - can be overridden when running
+# Example: docker-compose run ingestor python scripts/fetch_observations.py -n 50
+CMD ["bash"]

@@ -15,4 +15,5 @@ venv/
 # OS
 .DS_Store
 config.env
+.env
 logs/
