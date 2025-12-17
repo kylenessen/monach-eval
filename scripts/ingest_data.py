@@ -132,15 +132,19 @@ def get_api_token_from_login():
 
 def get_working_api_key():
     """Get a working API key, trying multiple methods."""
-    # Try provided API key first
+    # Prefer username/password login if configured (PATs are broken in this Label Studio instance)
+    if LS_USERNAME and LS_PASSWORD:
+        logger.info("Credentials configured - will use username/password auth")
+        token = get_api_token_from_login()
+        if token:
+            return token
+
+    # Fall back to provided API key
     if API_KEY and API_KEY != "placeholder":
+        logger.info("Trying provided API_KEY")
         return API_KEY
 
-    # Fall back to username/password login
-    token = get_api_token_from_login()
-    if token:
-        return token
-
+    logger.error("No authentication credentials configured!")
     return None
 
 
