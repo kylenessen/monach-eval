@@ -20,6 +20,7 @@ services:
       - POSTGRE_HOST=db
       - LABEL_STUDIO_USERNAME=${LABEL_STUDIO_USERNAME:-user@example.com}
       - LABEL_STUDIO_PASSWORD=${LABEL_STUDIO_PASSWORD:-password123}
+      - CSRF_TRUSTED_ORIGINS=https://monarch-eval.baywood-labs.com
     volumes:
       - ./data/mydata:/label-studio/data
       - ./data/images:/label-studio/data/images

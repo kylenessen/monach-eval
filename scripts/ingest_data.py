@@ -128,53 +128,25 @@ def sync_to_label_studio(filename, obs_id, obs_data):
     project.import_tasks([{"data": task_data}])
     logger.info(f"Imported task {obs_id} to Project {PROJECT_ID}")
 
-def get_access_token():
-    """Attempts to retrieve the API key using username and password."""
-    if not LS_USERNAME or not LS_PASSWORD:
-        logger.warning("No username/password provided. Cannot auto-fetch token.")
-        return None
-        
-    auth_url = f"{LS_URL.rstrip('/')}/api/auth-token/"
-    try:
-        response = requests.post(auth_url, json={"username": LS_USERNAME, "password": LS_PASSWORD})
-        if response.status_code == 200:
-            token = response.json().get("token")
-            logger.info("Successfully retrieved API token via auto-login.")
-            return token
-        else:
-            logger.warning(f"Failed to get token: {response.status_code} {response.text}")
-    except Exception as e:
-        logger.error(f"Error attempting auto-login: {e}")
-    return None
-
 def wait_for_label_studio():
     """Waits for Label Studio to be ready before starting."""
-    global API_KEY
     logger.info(f"Waiting for Label Studio at {LS_URL}...")
     
     while True:
         try:
-            # Check if API_KEY is valid by making a simple request
-            if API_KEY and API_KEY != "placeholder":
-                ls = Client(url=LS_URL, api_key=API_KEY)
-                try:
-                    ls.check_connection()
-                    logger.info("Label Studio is up and running with valid API Key!")
-                    return
-                except Exception:
-                    logger.info("Provided API Key failed. Attempting to fetch new one...")
-            
-            # Try to get a new token if the existing one is missing or invalid
-            new_token = get_access_token()
-            if new_token:
-                API_KEY = new_token
-                continue # Loop back to verify connection with new token
-                
-            # If we are here, we are waiting for the server to come up or creds are wrong
-            logger.info("Waiting for Label Studio specific availability or valid credentials...")
+            # Check if API_KEY is set and valid
+            if not API_KEY or API_KEY == "placeholder":
+                logger.warning("LABEL_STUDIO_API_KEY is not set or is 'placeholder'. Waiting for user to configure it...")
+                time.sleep(10)
+                continue
+
+            ls = Client(url=LS_URL, api_key=API_KEY)
+            ls.check_connection()
+            logger.info("Label Studio is up and running with valid API Key!")
+            return
             
         except Exception as e:
-            logger.warning(f"Connection check failed: {e}")
+            logger.warning(f"Connection check failed: {e}. Retrying in 5s...")
             
         time.sleep(5)
 
