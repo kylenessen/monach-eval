@@ -7,7 +7,7 @@ services:
     container_name: label-studio
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "8089:8080"
     environment:
       - LABEL_STUDIO_LOCAL_FILES_SERVING_ENABLED=true
       - LABEL_STUDIO_LOCAL_FILES_DOCUMENT_ROOT=/label-studio/data/images
