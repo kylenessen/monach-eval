@@ -14,7 +14,6 @@ load_dotenv()
 INAT_API_URL = "https://api.inaturalist.org/v1/observations"
 MONARCH_TAXON_ID = 48662
 PROJECT_ID = os.getenv("LABEL_STUDIO_PROJECT_ID", "1")
-LS_API_TOKEN = os.getenv("LABEL_STUDIO_API_TOKEN")
 LS_URL = os.getenv("LABEL_STUDIO_URL", "http://localhost:8080")
 IMAGE_DIR = Path("data/images")
 PROCESSED_LOG = Path("data/processed_observations.txt")
@@ -99,9 +98,11 @@ def download_image(url, obs_id):
 
 
 def check_label_studio_connection():
-    """Check if Label Studio is reachable and API token is valid."""
-    if not LS_API_TOKEN:
-        return False, "No API token configured (set LABEL_STUDIO_API_TOKEN)"
+    """Check if Label Studio is reachable and auth token is valid."""
+    api_token = os.getenv("LABEL_STUDIO_API_TOKEN")
+
+    if not api_token:
+        return False, "No LABEL_STUDIO_API_TOKEN configured"
 
     try:
         # Check server health
@@ -109,20 +110,20 @@ def check_label_studio_connection():
         if response.status_code != 200:
             return False, f"Server returned {response.status_code}"
 
-        # Test API token by getting project
-        headers = {"Authorization": f"Bearer {LS_API_TOKEN}"}
+        # Use Bearer format as per Label Studio documentation
+        headers = {"Authorization": f"Bearer {api_token}"}
         response = requests.get(f"{LS_URL}/api/projects/{PROJECT_ID}", headers=headers, timeout=10)
 
-        if response.status_code == 401:
-            return False, "API token is invalid or expired"
+        if response.status_code == 200:
+            project_data = response.json()
+            logger.info(f"Connected to project: {project_data.get('title', PROJECT_ID)}")
+            return True, "Connected successfully"
+        elif response.status_code == 401:
+            return False, "API token invalid or expired"
         elif response.status_code == 404:
             return False, f"Project {PROJECT_ID} not found"
-        elif response.status_code != 200:
+        else:
             return False, f"API returned {response.status_code}: {response.text[:200]}"
-
-        project_data = response.json()
-        logger.info(f"Connected to project: {project_data.get('title', PROJECT_ID)}")
-        return True, "Connected successfully"
 
     except requests.exceptions.ConnectionError:
         return False, "Cannot connect to Label Studio"
@@ -133,8 +134,10 @@ def check_label_studio_connection():
 
 def sync_to_label_studio(filename, obs_id, obs_data):
     """Creates a task in Label Studio using the REST API."""
-    if not LS_API_TOKEN:
-        logger.warning("Label Studio API token not set. Skipping sync.")
+    api_token = os.getenv("LABEL_STUDIO_API_TOKEN")
+
+    if not api_token:
+        logger.warning("No LABEL_STUDIO_API_TOKEN configured. Skipping sync.")
         return False
 
     try:
@@ -148,9 +151,9 @@ def sync_to_label_studio(filename, obs_id, obs_data):
             "observed_on": obs_data.get('observed_on'),
         }
 
-        # Import task via REST API
+        # Import task via REST API using Bearer auth as per docs
         headers = {
-            "Authorization": f"Bearer {LS_API_TOKEN}",
+            "Authorization": f"Bearer {api_token}",
             "Content-Type": "application/json"
         }
 
@@ -174,15 +177,14 @@ def sync_to_label_studio(filename, obs_id, obs_data):
 
 
 def wait_for_label_studio():
-    """Waits for Label Studio to be ready with valid credentials."""
+    """Waits for Label Studio to be ready."""
     logger.info(f"Waiting for Label Studio at {LS_URL}...")
 
     while True:
         success, message = check_label_studio_connection()
 
         if success:
-            masked_token = f"{LS_API_TOKEN[:8]}...{LS_API_TOKEN[-4:]}" if len(LS_API_TOKEN) > 12 else "***"
-            logger.info(f"Label Studio connected! (Token: {masked_token})")
+            logger.info("Label Studio is ready!")
             return
         else:
             logger.warning(f"Connection check failed: {message}. Retrying in 5s...")

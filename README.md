@@ -21,21 +21,21 @@ cp config.env .env
 
 Edit `.env` and set:
 
-- `LABEL_STUDIO_API_TOKEN` - Get this from Label Studio (see below)
-- `LABEL_STUDIO_USERNAME` - Your Label Studio login email
-- `LABEL_STUDIO_PASSWORD` - Your Label Studio password
+- `LABEL_STUDIO_API_TOKEN` - Your API token from Label Studio (see below)
 - `TUNNEL_TOKEN` - Your Cloudflare tunnel token (optional)
 - `SECRET_KEY` - Random string for Django sessions
 
 ### 2. Get Your Label Studio API Token
 
 1. Start Label Studio: `docker-compose up -d label-studio`
-2. Open http://localhost:8089 in your browser
-3. Log in with your username/password
-4. Go to **Account & Settings** (click your user icon)
-5. Select **Personal Access Token** from the left menu
-6. Copy the token (starts with "ey...")
+2. Open http://localhost:8089
+3. Login with your credentials
+4. Click your user icon → Account & Settings
+5. Select "Personal Access Token"
+6. Copy the entire token (starts with "ey...")
 7. Paste it into `.env` as `LABEL_STUDIO_API_TOKEN`
+
+Note: The script automatically tries both "Token" and "Bearer" header formats, so it works with both PAT and legacy tokens.
 
 ### 3. Create a Project in Label Studio
 
@@ -84,9 +84,10 @@ docker logs -f monarch-ingestor
 
 ## Troubleshooting
 
-### "API token is invalid or expired"
+### "Auth token invalid with both 'Token' and 'Bearer' formats"
 - Get a fresh token from Label Studio's Account & Settings
-- Make sure you copied the entire token (they're long!)
+- Make sure you copied the ENTIRE token (they're very long)
+- Try regenerating the token if it's expired
 
 ### "Project not found"
 - Check that `LABEL_STUDIO_PROJECT_ID` matches your actual project ID
@@ -106,11 +107,12 @@ docker logs -f monarch-ingestor
 ## How It Works
 
 The ingestion script:
-1. Queries iNaturalist API for research-grade monarch observations without life stage data
-2. Downloads observation images to `data/images/`
-3. Creates tasks in Label Studio via REST API
-4. Logs processed observation IDs to avoid duplicates
-5. Runs continuously with 2-second delays between observations
+1. Uses your API token to authenticate with Label Studio (tries both header formats automatically)
+2. Queries iNaturalist API for research-grade monarch observations without life stage data
+3. Downloads observation images to `data/images/`
+4. Creates tasks in Label Studio via REST API
+5. Logs processed observation IDs to avoid duplicates
+6. Runs continuously with 2-second delays between observations
 
 ## Simplifications Made
 
@@ -118,6 +120,6 @@ This project was rewritten to be **SIMPLE and ROBUST**:
 
 - Removed Label Studio SDK dependency (was causing auth issues)
 - Uses direct REST API calls instead
+- Auto-detects correct token format ("Token" vs "Bearer")
 - Only requires `requests` and `python-dotenv`
-- Clear error messages
-- Straightforward authentication with API tokens
+- Clear error messages with specific troubleshooting hints
