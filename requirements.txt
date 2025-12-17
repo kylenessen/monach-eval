@@ -1,0 +1,3 @@
+requests
+label-studio-sdk
+python-dotenv

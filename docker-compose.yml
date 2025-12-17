@@ -1,0 +1,61 @@
+version: "3.8"
+
+services:
+  # Label Studio: The core application
+  label-studio:
+    image: heartexlabs/label-studio:latest
+    container_name: label-studio
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - LABEL_STUDIO_LOCAL_FILES_SERVING_ENABLED=true
+      - LABEL_STUDIO_LOCAL_FILES_DOCUMENT_ROOT=/label-studio/data/images
+      - DJANGO_DB=default
+      - POSTGRE_NAME=postgres
+      - POSTGRE_USER=postgres
+      - POSTGRE_PASSWORD=postgres
+      - POSTGRE_PORT=5432
+      - POSTGRE_HOST=db
+    volumes:
+      - ./data/mydata:/label-studio/data
+      - ./data/images:/label-studio/data/images
+    command: label-studio start
+    depends_on:
+      - db
+
+  # Postgres: The database backend
+  db:
+    image: postgres:14-alpine
+    container_name: label-studio-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=postgres
+    volumes:
+      - ./data/postgres-data:/var/lib/postgresql/data
+
+  # Cloudflared: Secure remote access
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: label-studio-tunnel
+    restart: unless-stopped
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
+
+  # Ingestion Worker: Runs the python script
+  ingestor:
+    build: .
+    container_name: monarch-ingestor
+    restart: unless-stopped
+    environment:
+      - LABEL_STUDIO_URL=http://label-studio:8080
+      - LABEL_STUDIO_API_KEY=${LABEL_STUDIO_API_KEY}
+      - LABEL_STUDIO_PROJECT_ID=${LABEL_STUDIO_PROJECT_ID}
+    volumes:
+      - ./data/images:/app/data/images
+      - ./data/processed_observations.txt:/app/data/processed_observations.txt
+    depends_on:
+      - label-studio
