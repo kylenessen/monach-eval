@@ -6,6 +6,7 @@ import logging
 from pathlib import Path
 from dotenv import load_dotenv
 from label_studio_sdk import Client
+import shutil
 
 # Load environment variables
 load_dotenv()
@@ -27,6 +28,10 @@ logger = logging.getLogger(__name__)
 IMAGE_DIR.mkdir(parents=True, exist_ok=True)
 
 def load_processed_ids():
+    if PROCESSED_LOG.is_dir():
+        logger.warning(f"{PROCESSED_LOG} is a directory (Docker volume error). Removing it...")
+        shutil.rmtree(PROCESSED_LOG)
+        
     if not PROCESSED_LOG.exists():
         return set()
     with open(PROCESSED_LOG, "r") as f:
