@@ -22,7 +22,18 @@ services:
       - ./data/images:/label-studio/data/images
     command: label-studio start
     depends_on:
-      - db
+      db:
+        condition: service_started
+      fix-perms:
+        condition: service_completed_successfully
+
+  # Fix Permissions: One-off helper to chown data dirs
+  fix-perms:
+    image: alpine:latest
+    container_name: fix-perms
+    command: sh -c "chown -R 1001:1001 /data && chmod -R 775 /data"
+    volumes:
+      - ./data:/data
 
   # Postgres: The database backend
   db:
