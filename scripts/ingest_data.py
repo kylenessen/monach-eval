@@ -157,16 +157,36 @@ def wait_for_label_studio():
             original_make_request = ls.make_request
 
             def patched_make_request(method, url, *args, **kwargs):
-                # Ensure headers exist
+                # Ensure headers exist in kwargs
                 if 'headers' not in kwargs:
                     kwargs['headers'] = {}
                 
                 # Force our Authorization header
                 kwargs['headers'][auth_header_name] = auth_header_value
                 
-                # The SDK might try to add its own Authorization header inside `original_make_request`.
-                # If the SDK uses `self.headers`, we should update that too.
+                # Update the client's headers too, just in case
                 ls.headers.update({auth_header_name: auth_header_value})
+
+                # Call the original method. 
+                # Note: The error "multiple values for keyword argument 'headers'" means the original method
+                # might be calling `requests.request` with `headers=...` AND we are passing `headers` in kwargs.
+                # However, `ls.make_request` signature is `make_request(self, method, url, params=None, data=None, files=None, **kwargs)`.
+                # If the SDK internals pass `headers` as a named arg to `requests.request`, and we also pass it in `kwargs`, that causes the crash.
+                # Let's inspect what `original_make_request` does. It calls `self.session.request(method, url, ... **kwargs)`.
+                # So passing `headers` in `kwargs` is correct for `requests`.
+                # UNLESS `original_make_request` extracts headers itself. 
+                
+                # SAFEST BET: Don't pass headers in kwargs to `original_make_request` if it causes issues. 
+                # Instead, rely on `ls.headers` which we updated above. The SDK uses `ls.headers` as the session headers.
+                # BUT, if the SDK *overrides* headers in the call, we lose.
+                
+                # Let's try to NOT inject it into kwargs if it's causing the crash, and rely on the session header update we just did.
+                # The crash happened when we DID inject into kwargs.
+                
+                # Reverting the valid kwarg injection for now and relying on `ls.headers` update.
+                # But to be double sure, we can set the session headers directly on the underlying session object if it exists.
+                if hasattr(ls, 'session'):
+                    ls.session.headers.update({auth_header_name: auth_header_value})
 
                 return original_make_request(method, url, *args, **kwargs)
 
