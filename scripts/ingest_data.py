@@ -99,49 +99,48 @@ def download_image(url, obs_id):
         return None
 
 
-def get_api_token_from_login():
-    """Login with username/password and get an API token."""
-    if not LS_USERNAME or not LS_PASSWORD:
-        return None
-
+def get_access_token_from_refresh(refresh_token):
+    """Exchange a refresh token (PAT) for an access token."""
     try:
-        logger.info(f"Logging in as {LS_USERNAME} to get API token...")
+        logger.info(f"Exchanging refresh token for access token...")
         response = requests.post(
-            f"{LS_URL}/api/login",
-            json={"email": LS_USERNAME, "password": LS_PASSWORD},
+            f"{LS_URL}/api/token/refresh/",
+            json={"refresh": refresh_token},
             timeout=10
         )
 
         if response.status_code == 200:
             data = response.json()
-            token = data.get("token")
-            if token:
-                logger.info(f"Login successful! Got API token: {token[:10]}...")
-                return token
+            access_token = data.get("access")
+            if access_token:
+                logger.info(f"Got access token: {access_token[:10]}...")
+                return access_token
             else:
-                logger.error(f"Login response missing token: {data}")
+                logger.error(f"Refresh response missing access token: {data}")
                 return None
         else:
-            logger.error(f"Login failed: {response.status_code} - {response.text[:200]}")
+            logger.error(f"Token refresh failed: {response.status_code} - {response.text[:200]}")
             return None
 
     except Exception as e:
-        logger.error(f"Login error: {e}")
+        logger.error(f"Token refresh error: {e}")
         return None
 
 
 def get_working_api_key():
     """Get a working API key, trying multiple methods."""
-    # Prefer username/password login if configured (PATs are broken in this Label Studio instance)
-    if LS_USERNAME and LS_PASSWORD:
-        logger.info("Credentials configured - will use username/password auth")
-        token = get_api_token_from_login()
-        if token:
-            return token
+    # If API_KEY looks like a JWT refresh token, exchange it for an access token
+    if API_KEY and API_KEY.startswith("eyJ"):
+        logger.info("API_KEY appears to be a JWT refresh token - exchanging for access token")
+        access_token = get_access_token_from_refresh(API_KEY)
+        if access_token:
+            return access_token
+        logger.warning("Token refresh failed, will try using refresh token directly")
+        return API_KEY
 
-    # Fall back to provided API key
+    # Try provided API key as-is
     if API_KEY and API_KEY != "placeholder":
-        logger.info("Trying provided API_KEY")
+        logger.info("Using provided API_KEY")
         return API_KEY
 
     logger.error("No authentication credentials configured!")
