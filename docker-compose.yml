@@ -18,23 +18,14 @@ services:
       - POSTGRE_PASSWORD=postgres
       - POSTGRE_PORT=5432
       - POSTGRE_HOST=db
+      - LABEL_STUDIO_USERNAME=${LABEL_STUDIO_USERNAME:-user@example.com}
+      - LABEL_STUDIO_PASSWORD=${LABEL_STUDIO_PASSWORD:-password123}
     volumes:
       - ./data/mydata:/label-studio/data
       - ./data/images:/label-studio/data/images
     command: label-studio start
     depends_on:
-      db:
-        condition: service_started
-      fix-perms:
-        condition: service_completed_successfully
-
-  # Fix Permissions: One-off helper to chown data dirs
-  fix-perms:
-    image: alpine:latest
-    container_name: fix-perms
-    command: sh -c "mkdir -p /data/mydata /data/images && chown -R 1001:1001 /data && chmod -R 775 /data"
-    volumes:
-      - ./data:/data
+      - db
 
   # Postgres: The database backend
   db:
@@ -66,6 +57,8 @@ services:
       - LABEL_STUDIO_URL=http://label-studio:8080
       - LABEL_STUDIO_API_KEY=${LABEL_STUDIO_API_KEY}
       - LABEL_STUDIO_PROJECT_ID=${LABEL_STUDIO_PROJECT_ID}
+      - LABEL_STUDIO_USERNAME=${LABEL_STUDIO_USERNAME:-user@example.com}
+      - LABEL_STUDIO_PASSWORD=${LABEL_STUDIO_PASSWORD:-password123}
     volumes:
       - ./data:/app/data
     depends_on:
