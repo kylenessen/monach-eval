@@ -150,17 +150,28 @@ def wait_for_label_studio():
                 auth_header_value = f"Token {API_KEY}"
                 logger.info("Detected standard token. Using 'Token' prefix.")
 
-            # Manually construct client with custom headers if needed, 
-            # or rely on the SDK if it supports it. Unfortunately SDK 1.x is rigid.
-            # We will Monkey-Patch or just use the SDK's mechanism if possible.
-            # Inspecting SDK source (user cannot see this): 
-            # The SDK uses `self.headers = {'Authorization': f'Token {api_key}'}` by default.
-            
             ls = Client(url=LS_URL, api_key=API_KEY)
             
-            # monkey-patch the headers if it's a JWT
-            if API_KEY.startswith("ey"):
-                ls.headers.update({"Authorization": f"Bearer {API_KEY}"})
+            # CRITICAL FIX: The SDK resets headers on every request or doesn't use the client's headers safely.
+            # We must monkey-patch the `make_request` method to ensure our header wins.
+            original_make_request = ls.make_request
+
+            def patched_make_request(method, url, *args, **kwargs):
+                # Ensure headers exist
+                if 'headers' not in kwargs:
+                    kwargs['headers'] = {}
+                
+                # Force our Authorization header
+                kwargs['headers'][auth_header_name] = auth_header_value
+                
+                # The SDK might try to add its own Authorization header inside `original_make_request`.
+                # If the SDK uses `self.headers`, we should update that too.
+                ls.headers.update({auth_header_name: auth_header_value})
+
+                return original_make_request(method, url, *args, **kwargs)
+
+            # Apply the patch
+            ls.make_request = patched_make_request
 
             ls.check_connection()
             masked_key = f"{API_KEY[:4]}...{API_KEY[-4:]}" if len(API_KEY) > 8 else "***"
