@@ -100,7 +100,10 @@ def get_auth_header():
     """Returns the appropriate Authorization header for the API key."""
     if not API_KEY or API_KEY == "placeholder":
         return None
-    # Label Studio API tokens use "Token" prefix
+    # Personal Access Tokens (PATs) are JWTs starting with "eyJ" - use Bearer
+    # Legacy tokens use Token prefix
+    if API_KEY.startswith("eyJ"):
+        return {"Authorization": f"Bearer {API_KEY}"}
     return {"Authorization": f"Token {API_KEY}"}
 
 
