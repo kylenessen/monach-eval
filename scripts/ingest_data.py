@@ -140,7 +140,28 @@ def wait_for_label_studio():
                 time.sleep(10)
                 continue
 
+            # Determine header prefix based on token format
+            # JWTs typically start with 'ey', while legacy headers used 'Token'
+            auth_header_name = "Authorization"
+            if API_KEY.startswith("ey"):
+                auth_header_value = f"Bearer {API_KEY}"
+                logger.info("Detected JWT token. Using 'Bearer' prefix.")
+            else:
+                auth_header_value = f"Token {API_KEY}"
+                logger.info("Detected standard token. Using 'Token' prefix.")
+
+            # Manually construct client with custom headers if needed, 
+            # or rely on the SDK if it supports it. Unfortunately SDK 1.x is rigid.
+            # We will Monkey-Patch or just use the SDK's mechanism if possible.
+            # Inspecting SDK source (user cannot see this): 
+            # The SDK uses `self.headers = {'Authorization': f'Token {api_key}'}` by default.
+            
             ls = Client(url=LS_URL, api_key=API_KEY)
+            
+            # monkey-patch the headers if it's a JWT
+            if API_KEY.startswith("ey"):
+                ls.headers.update({"Authorization": f"Bearer {API_KEY}"})
+
             ls.check_connection()
             masked_key = f"{API_KEY[:4]}...{API_KEY[-4:]}" if len(API_KEY) > 8 else "***"
             logger.info(f"Label Studio is up and running with valid API Key! (Key: {masked_key})")
