@@ -142,7 +142,8 @@ def wait_for_label_studio():
 
             ls = Client(url=LS_URL, api_key=API_KEY)
             ls.check_connection()
-            logger.info("Label Studio is up and running with valid API Key!")
+            masked_key = f"{API_KEY[:4]}...{API_KEY[-4:]}" if len(API_KEY) > 8 else "***"
+            logger.info(f"Label Studio is up and running with valid API Key! (Key: {masked_key})")
             return
             
         except Exception as e:
