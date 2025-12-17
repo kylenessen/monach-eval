@@ -126,8 +126,22 @@ def sync_to_label_studio(filename, obs_id, obs_data):
     project.import_tasks([{"data": task_data}])
     logger.info(f"Imported task {obs_id} to Project {PROJECT_ID}")
 
+def wait_for_label_studio():
+    """Waits for Label Studio to be ready before starting."""
+    logger.info(f"Waiting for Label Studio at {LS_URL}...")
+    while True:
+        try:
+            ls = Client(url=LS_URL, api_key=API_KEY)
+            ls.check_connection()
+            logger.info("Label Studio is up and running!")
+            return
+        except Exception:
+            logger.warning("Label Studio not ready yet. Retrying in 5s...")
+            time.sleep(5)
+
 def main():
     logger.info("Starting Ingestion Pipeline...")
+    wait_for_label_studio()
     processed = load_processed_ids()
     
     # Run loop
