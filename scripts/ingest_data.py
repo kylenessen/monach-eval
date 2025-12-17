@@ -147,21 +147,38 @@ def get_working_api_key():
     return None
 
 
+def get_ls_client():
+    """Get an authenticated Label Studio client."""
+    # Try username/password first (most reliable)
+    if LS_USERNAME and LS_PASSWORD:
+        try:
+            logger.info(f"Authenticating with username: {LS_USERNAME}")
+            ls = Client(url=LS_URL, email=LS_USERNAME, password=LS_PASSWORD)
+            return ls
+        except Exception as e:
+            logger.error(f"Username/password auth failed: {e}")
+
+    # Fall back to API key
+    api_key = get_working_api_key()
+    if api_key:
+        logger.info(f"Authenticating with API key: {api_key[:10]}...")
+        return Client(url=LS_URL, api_key=api_key)
+
+    return None
+
+
 def check_label_studio_connection():
     """Check if Label Studio is reachable and credentials are valid."""
-    api_key = get_working_api_key()
-    if not api_key:
-        return False, "No credentials configured (need API_KEY or USERNAME+PASSWORD)"
-
     try:
         # First check if the server is up
         response = requests.get(f"{LS_URL}/api/version", timeout=10)
         if response.status_code != 200:
             return False, f"Server returned {response.status_code}"
 
-        # Try using the SDK (it handles auth automatically)
-        logger.info(f"Testing SDK auth with token: {api_key[:10]}...{api_key[-4:]}")
-        ls = Client(url=LS_URL, api_key=api_key)
+        # Get authenticated client
+        ls = get_ls_client()
+        if not ls:
+            return False, "No credentials configured (need API_KEY or USERNAME+PASSWORD)"
 
         # Test connection
         ls.check_connection()
@@ -171,25 +188,24 @@ def check_label_studio_connection():
         project = ls.get_project(PROJECT_ID)
         logger.info(f"SDK successfully retrieved project: {project.title if hasattr(project, 'title') else PROJECT_ID}")
 
-        return True, "Connected successfully with SDK"
+        return True, "Connected successfully"
 
     except requests.exceptions.ConnectionError:
         return False, "Cannot connect to Label Studio"
     except Exception as e:
-        logger.error(f"SDK connection failed: {type(e).__name__}: {e}")
-        return False, f"SDK auth failed: {str(e)[:200]}"
+        logger.error(f"Connection failed: {type(e).__name__}: {e}")
+        return False, f"Auth failed: {str(e)[:200]}"
 
 
 def sync_to_label_studio(filename, obs_id, obs_data):
     """Creates a task in Label Studio using the SDK."""
-    api_key = get_working_api_key()
-    if not api_key:
-        logger.warning("Label Studio credentials not set. Skipping sync.")
-        return False
-
     try:
-        # Create SDK client
-        ls = Client(url=LS_URL, api_key=api_key)
+        # Get authenticated client
+        ls = get_ls_client()
+        if not ls:
+            logger.warning("Label Studio credentials not set. Skipping sync.")
+            return False
+
         project = ls.get_project(PROJECT_ID)
 
         # Construct the local path that Label Studio container can access
