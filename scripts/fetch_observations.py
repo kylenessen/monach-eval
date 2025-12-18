@@ -23,7 +23,9 @@ load_dotenv()
 # Configuration
 INAT_API_URL = "https://api.inaturalist.org/v1/observations"
 MONARCH_TAXON_ID = 48662
-IMAGE_DIR = Path("data/images")
+# Resolve paths relative to the project root (one level up from this script)
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+IMAGE_DIR = PROJECT_ROOT / "data" / "images"
 
 # Database configuration
 DB_CONFIG = {

@@ -64,8 +64,10 @@ def main():
         conn.close()
 
         # Delete all images
-        print("\nDeleting images from data/images/...")
-        image_dir = Path("data/images")
+        # Resolve paths relative to the project root
+        project_root = Path(__file__).resolve().parent.parent
+        image_dir = project_root / "data" / "images"
+        print(f"\nDeleting images from {image_dir}...")
         if image_dir.exists():
             deleted_count = 0
             for image_file in image_dir.glob("*.jpg"):

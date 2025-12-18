@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS observations (
     num_identification_agreements INTEGER,
     num_identification_disagreements INTEGER,
     license TEXT,
+    raw_data JSONB,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(observation_id)
 );
@@ -88,7 +89,7 @@ def wait_for_db(max_attempts=30):
     return False
 
 def init_schema():
-    """Initialize database schema if it doesn't exist"""
+    """Initialize database schema or migrate if needed"""
     try:
         conn = psycopg2.connect(**DB_CONFIG)
         conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
@@ -101,7 +102,6 @@ def init_schema():
                 WHERE table_name = 'observations'
             );
         """)
-
         exists = cursor.fetchone()[0]
 
         if not exists:
@@ -109,7 +109,20 @@ def init_schema():
             cursor.execute(SCHEMA_SQL)
             print("✓ Database schema created successfully")
         else:
-            print("✓ Database schema already exists")
+            print("✓ Observations table exists")
+            
+            # Check for raw_data column and add if missing
+            cursor.execute("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name='observations' AND column_name='raw_data';
+            """)
+            if not cursor.fetchone():
+                print("Migrating schema: Adding raw_data column...")
+                cursor.execute("ALTER TABLE observations ADD COLUMN raw_data JSONB;")
+                print("✓ Added raw_data column")
+            else:
+                print("✓ Schema is up to date")
 
         cursor.close()
         conn.close()
