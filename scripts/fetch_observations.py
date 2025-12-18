@@ -12,6 +12,7 @@ import requests
 import logging
 import argparse
 import psycopg2
+import psycopg2.extras
 from pathlib import Path
 from dotenv import load_dotenv
 from psycopg2.extras import RealDictCursor
@@ -73,8 +74,8 @@ def save_observation(conn, obs_data, image_filename):
                     observation_id, inat_url, observed_on, observer_login, observer_name,
                     latitude, longitude, location, image_url, image_local_path,
                     quality_grade, num_identification_agreements, num_identification_disagreements,
-                    license
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    license, raw_data
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (observation_id) DO NOTHING
             """, (
                 obs_data['id'],
@@ -90,7 +91,8 @@ def save_observation(conn, obs_data, image_filename):
                 obs_data.get('quality_grade'),
                 len([i for i in obs_data.get('identifications', []) if i.get('current', False) and i.get('category') == 'improving']),
                 len([i for i in obs_data.get('identifications', []) if i.get('current', False) and i.get('category') == 'maverick']),
-                obs_data.get('license_code')
+                obs_data.get('license_code'),
+                psycopg2.extras.Json(obs_data)  # Store full API response as JSON
             ))
             conn.commit()
             logger.info(f"Saved observation {obs_data['id']} to database")
@@ -176,8 +178,8 @@ def process_observation(conn, obs):
         logger.warning(f"Observation {obs_id} has no photos, skipping")
         return False
 
-    # Use 'medium' size for better quality
-    photo_url = photos[0]['url'].replace('square', 'medium')
+    # Use 'large' size for better quality
+    photo_url = photos[0]['url'].replace('square', 'large')
 
     # Download image
     filename = download_image(photo_url, obs_id)

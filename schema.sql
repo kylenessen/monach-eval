@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS observations (
     num_identification_agreements INTEGER,
     num_identification_disagreements INTEGER,
     license TEXT,
+    raw_data JSONB,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(observation_id)
 );
