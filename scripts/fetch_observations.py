@@ -116,7 +116,7 @@ def get_random_observations(batch_size=1):
         "without_term_id": 1,  # Filter out observations with Life Stage annotation
         "photos": "true",
         "per_page": batch_size,
-        "order_by": "id",
+        "order_by": "observed_on",
         "order": "desc",
     }
 
