@@ -51,14 +51,13 @@ services:
     environment:
       - TUNNEL_TOKEN=${TUNNEL_TOKEN}
 
-  # Python environment for running fetch scripts (on-demand)
-  # Usage: docker-compose run --rm ingestor python scripts/fetch_observations.py -n 50
+  # Python environment for running fetch scripts
+  # Use Portainer's console to exec: python scripts/fetch_observations.py -n 50
   ingestor:
     build: .
     container_name: monarch-ingestor
-    restart: "no"
-    profiles:
-      - tools
+    restart: unless-stopped
+    command: sleep infinity
     environment:
       - POSTGRES_HOST=db
       - POSTGRES_PORT=5432
