@@ -10,7 +10,7 @@ services:
       - "8089:8080"
     environment:
       - LABEL_STUDIO_LOCAL_FILES_SERVING_ENABLED=true
-      - LABEL_STUDIO_LOCAL_FILES_DOCUMENT_ROOT=/label-studio/data/images
+      - LABEL_STUDIO_LOCAL_FILES_DOCUMENT_ROOT=/label-studio/data
       - LABEL_STUDIO_HOST=https://monarch-eval.baywood-labs.com
       - DJANGO_DB=default
       - POSTGRE_NAME=postgres
