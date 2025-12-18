@@ -11,77 +11,61 @@
   </Choices>
 
   <!-- Adult sub-options -->
-  <Header value="Adult Behavior" visibleWhen="choice-selected" whenTagName="life_stage" whenChoiceValue="Adult"/>
-  <Choices name="adult_behavior" toName="image" required="true" choice="single-radio"
-           visibleWhen="choice-selected" whenTagName="life_stage" whenChoiceValue="Adult">
-    <Choice value="Resting"/>
-    <Choice value="Flying"/>
-    <Choice value="Nectaring"/>
-    <Choice value="Clustering"/>
-    <Choice value="Mating"/>
-    <Choice value="Ovipositing"/>
-    <Choice value="Other"/>
-  </Choices>
+  <View visibleWhen="choice-selected" whenTagName="life_stage" whenChoiceValue="Adult">
+    <Header value="Adult Behavior"/>
+    <Choices name="adult_behavior" toName="image" required="true" choice="single-radio">
+      <Choice value="Resting"/>
+      <Choice value="Flying"/>
+      <Choice value="Nectaring"/>
+      <Choice value="Clustering"/>
+      <Choice value="Mating"/>
+      <Choice value="Ovipositing"/>
+      <Choice value="Other"/>
+    </Choices>
+  </View>
 
   <!-- Text box for Adult Other -->
-  <Header value="Please specify:"
-          visibleWhen="choice-selected"
-          whenTagName="adult_behavior"
-          whenChoiceValue="Other"/>
-  <TextArea name="adult_other_details"
-            toName="image"
-            placeholder="Describe the behavior..."
-            maxSubmissions="1"
-            rows="2"
-            visibleWhen="choice-selected"
-            whenTagName="adult_behavior"
-            whenChoiceValue="Other"
-            requiredWhen="choice-selected"
-            whenTagNameForRequired="adult_behavior"
-            whenChoiceValueForRequired="Other"/>
+  <View visibleWhen="choice-selected" whenTagName="adult_behavior" whenChoiceValue="Other">
+    <Header value="Please specify:"/>
+    <TextArea name="adult_other_details"
+              toName="image"
+              placeholder="Describe the behavior..."
+              required="true"
+              maxSubmissions="1"
+              rows="2"/>
+  </View>
 
   <!-- Larva sub-options -->
-  <Header value="Larva Instar" visibleWhen="choice-selected" whenTagName="life_stage" whenChoiceValue="Larva"/>
-  <Choices name="larva_instar" toName="image" required="true" choice="single-radio"
-           visibleWhen="choice-selected" whenTagName="life_stage" whenChoiceValue="Larva">
-    <Choice value="Early instar"/>
-    <Choice value="Late instar"/>
-    <Choice value="Other"/>
-  </Choices>
+  <View visibleWhen="choice-selected" whenTagName="life_stage" whenChoiceValue="Larva">
+    <Header value="Larva Instar"/>
+    <Choices name="larva_instar" toName="image" required="true" choice="single-radio">
+      <Choice value="Early instar"/>
+      <Choice value="Late instar"/>
+      <Choice value="Other"/>
+    </Choices>
+  </View>
 
   <!-- Text box for Larva Other -->
-  <Header value="Please specify:"
-          visibleWhen="choice-selected"
-          whenTagName="larva_instar"
-          whenChoiceValue="Other"/>
-  <TextArea name="larva_other_details"
-            toName="image"
-            placeholder="Describe the larva..."
-            maxSubmissions="1"
-            rows="2"
-            visibleWhen="choice-selected"
-            whenTagName="larva_instar"
-            whenChoiceValue="Other"
-            requiredWhen="choice-selected"
-            whenTagNameForRequired="larva_instar"
-            whenChoiceValueForRequired="Other"/>
+  <View visibleWhen="choice-selected" whenTagName="larva_instar" whenChoiceValue="Other">
+    <Header value="Please specify:"/>
+    <TextArea name="larva_other_details"
+              toName="image"
+              placeholder="Describe the larva..."
+              required="true"
+              maxSubmissions="1"
+              rows="2"/>
+  </View>
 
   <!-- Unknown details -->
-  <Header value="Please provide details:"
-          visibleWhen="choice-selected"
-          whenTagName="life_stage"
-          whenChoiceValue="Unknown"/>
-  <TextArea name="unknown_details"
-            toName="image"
-            placeholder="Why is the life stage unknown? What can you see?"
-            maxSubmissions="1"
-            rows="3"
-            visibleWhen="choice-selected"
-            whenTagName="life_stage"
-            whenChoiceValue="Unknown"
-            requiredWhen="choice-selected"
-            whenTagNameForRequired="life_stage"
-            whenChoiceValueForRequired="Unknown"/>
+  <View visibleWhen="choice-selected" whenTagName="life_stage" whenChoiceValue="Unknown">
+    <Header value="Please provide details:"/>
+    <TextArea name="unknown_details"
+              toName="image"
+              placeholder="Why is the life stage unknown? What can you see?"
+              required="true"
+              maxSubmissions="1"
+              rows="3"/>
+  </View>
 
   <Header value="Instructions:"/>
   <Text name="instructions" value="1. Select the life stage&#10;2. Complete required sub-options if they appear&#10;3. Submit annotation"/>
