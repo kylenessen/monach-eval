@@ -52,12 +52,12 @@ services:
       - TUNNEL_TOKEN=${TUNNEL_TOKEN}
 
   # Python environment for running fetch scripts
+  # Auto-initializes database on startup, then stays running
   # Use Portainer's console to exec: python scripts/fetch_observations.py -n 50
   ingestor:
     build: .
     container_name: monarch-ingestor
     restart: unless-stopped
-    command: sleep infinity
     environment:
       - POSTGRES_HOST=db
       - POSTGRES_PORT=5432
