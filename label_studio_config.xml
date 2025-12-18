@@ -1,0 +1,61 @@
+<View>
+  <Image name="image" value="$image"/>
+
+  <Header value="Life Stage"/>
+  <Choices name="life_stage" toName="image" required="true" choice="single-radio">
+    <Choice value="Egg"/>
+    <Choice value="Larva"/>
+    <Choice value="Pupa"/>
+    <Choice value="Adult"/>
+    <Choice value="Unknown"/>
+  </Choices>
+
+  <!-- Adult sub-options -->
+  <View visibleWhen="choice-selected" whenTagName="life_stage" whenChoiceValue="Adult">
+    <Header value="Adult Behavior"/>
+    <Choices name="adult_behavior" toName="image" required="true" choice="single-radio">
+      <Choice value="Resting"/>
+      <Choice value="Flying"/>
+      <Choice value="Nectaring"/>
+      <Choice value="Clustering"/>
+      <Choice value="Mating"/>
+      <Choice value="Ovipositing"/>
+      <Choice value="Other"/>
+    </Choices>
+
+    <!-- Text box for Adult Other -->
+    <View visibleWhen="choice-selected" whenTagName="adult_behavior" whenChoiceValue="Other">
+      <Header value="Please specify:"/>
+      <TextArea name="adult_other_details" toName="image" required="true"
+                placeholder="Describe the behavior..." maxSubmissions="1" rows="2"/>
+    </View>
+  </View>
+
+  <!-- Larva sub-options -->
+  <View visibleWhen="choice-selected" whenTagName="life_stage" whenChoiceValue="Larva">
+    <Header value="Larva Instar"/>
+    <Choices name="larva_instar" toName="image" required="true" choice="single-radio">
+      <Choice value="Early instar"/>
+      <Choice value="Late instar"/>
+      <Choice value="Other"/>
+    </Choices>
+
+    <!-- Text box for Larva Other -->
+    <View visibleWhen="choice-selected" whenTagName="larva_instar" whenChoiceValue="Other">
+      <Header value="Please specify:"/>
+      <TextArea name="larva_other_details" toName="image" required="true"
+                placeholder="Describe the larva..." maxSubmissions="1" rows="2"/>
+    </View>
+  </View>
+
+  <!-- Unknown details -->
+  <View visibleWhen="choice-selected" whenTagName="life_stage" whenChoiceValue="Unknown">
+    <Header value="Please provide details:"/>
+    <TextArea name="unknown_details" toName="image" required="true"
+              placeholder="Why is the life stage unknown? What can you see?"
+              maxSubmissions="1" rows="3"/>
+  </View>
+
+  <Header value="Instructions:"/>
+  <Text value="1. Select the life stage&#10;2. Complete required sub-options if they appear&#10;3. Submit annotation"/>
+</View>

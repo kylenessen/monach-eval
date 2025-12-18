@@ -273,20 +273,23 @@ Label Studio is running at `https://monarch-eval.baywood-labs.com` and shares th
 
 ### 1. Label Studio Configuration
 
-Your Label Studio project should have this labeling config:
+Your Label Studio project should use the labeling config from `label_studio_config.xml`.
 
-```xml
-<View>
-  <Image name="image" value="$image"/>
-  <Choices name="life_stage" toName="image" required="true">
-    <Choice value="Egg"/>
-    <Choice value="Larva"/>
-    <Choice value="Pupa"/>
-    <Choice value="Adult"/>
-    <Choice value="Unknown"/>
-  </Choices>
-</View>
-```
+**To set up the configuration:**
+1. Log into Label Studio
+2. Go to your project → Settings → Labeling Interface
+3. Copy the contents of `label_studio_config.xml` and paste it in
+4. Click Save
+
+**Features:**
+- **Life Stage Selection:** Egg, Larva, Pupa, Adult, Unknown
+- **Conditional Sub-options:**
+  - **Adult:** Resting, Flying, Nectaring, Clustering, Mating, Ovipositing, Other (with text field)
+  - **Larva:** Early instar, Late instar, Other (with text field)
+  - **Unknown:** Text field required to explain
+  - **Egg/Pupa:** No sub-options needed
+- All sub-options are required and single-selection
+- Instructions displayed at bottom of interface
 
 ### 2. Workflow
 
