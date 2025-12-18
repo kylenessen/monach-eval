@@ -105,96 +105,118 @@ def save_observation(conn, obs_data, image_filename):
         return False
 
 
-def get_random_observations(batch_size=1):
+def fetch_candidates(target_count, existing_ids=set()):
     """
-    Fetches random research-grade Monarch observations without Life Stage annotation.
-    Returns a list of observations.
+    Fetches a pool of candidate observations.
+    Target pool size is 10x the requested count (or 200, whichever is larger).
     """
+    pool_target = max(target_count * 10, 200)
+    candidates = {}  # Use dict to deduplicate by ID {id: obs}
+    
+    # Get total count first
+    try:
+        params = {
+            "taxon_id": MONARCH_TAXON_ID,
+            "quality_grade": "research",
+            "without_term_id": 1,
+            "per_page": 1,
+        }
+        response = requests.get(INAT_API_URL, params=params)
+        response.raise_for_status()
+        total_results = response.json()['total_results']
+        logger.info(f"Total available observations: {total_results}")
+    except Exception as e:
+        logger.error(f"Error fetching total count: {e}")
+        return []
+
+    # If total is small, just fetch everything sequentially
+    if total_results <= pool_target:
+        logger.info(f"Total results ({total_results}) is small. Fetching all available...")
+        return fetch_all_available(total_results)
+
+    # Otherwise, fetch from random offsets until we have enough
+    attempts = 0
+    max_attempts = 20  # Prevent infinite loops
+    
+    # Accessible limit is usually 10k for offset-based queries
+    max_accessible = min(total_results, 10000)
+
+    while len(candidates) < pool_target and attempts < max_attempts:
+        attempts += 1
+        
+        # Pick a random offset
+        # Ensure we don't go past the end
+        page_size = 200
+        max_start = max(0, max_accessible - page_size)
+        offset = random.randint(0, max_start)
+        
+        logger.info(f"Fetching batch from offset {offset} (Pool size: {len(candidates)}/{pool_target})...")
+        
+        batch = fetch_batch(offset, page_size)
+        if not batch:
+            break
+            
+        for obs in batch:
+            # Only add if not already in our pool AND not in DB (optimization)
+            if obs['id'] not in candidates and obs['id'] not in existing_ids:
+                candidates[obs['id']] = obs
+
+    return list(candidates.values())
+
+def fetch_batch(offset, limit=200):
+    """Fetch a single batch of observations."""
     params = {
         "taxon_id": MONARCH_TAXON_ID,
         "quality_grade": "research",
-        "without_term_id": 1,  # Filter out observations with Life Stage annotation
+        "without_term_id": 1,
         "photos": "true",
-        "per_page": batch_size,
+        "per_page": limit,
+        "offset": offset,
         "order_by": "observed_on",
         "order": "desc",
     }
-
     try:
-        # First request to get total count
         response = requests.get(INAT_API_URL, params=params)
         response.raise_for_status()
-        data = response.json()
-        total_results = data['total_results']
-
-        logger.info(f"Total available observations: {total_results}")
-
-        # Limit offset to 9000 (iNat API has 10k limit)
-        max_offset = min(total_results - batch_size, 9000)
-        random_offset = random.randint(0, max(0, max_offset))
-
-        # Fetch batch from random offset
-        params["offset"] = random_offset
-        response = requests.get(INAT_API_URL, params=params)
-        response.raise_for_status()
-        results = response.json().get('results', [])
-
-        logger.info(f"Fetched {len(results)} observations from offset {random_offset}")
-        return results
-
+        return response.json().get('results', [])
     except Exception as e:
-        logger.error(f"Error fetching from iNaturalist: {e}")
+        logger.error(f"Error fetching batch: {e}")
         return []
 
+def fetch_all_available(total_limit):
+    """Refetch logic for small result sets - sequential paging."""
+    results = []
+    page = 1
+    per_page = 200
+    while len(results) < total_limit:
+        params = {
+            "taxon_id": MONARCH_TAXON_ID,
+            "quality_grade": "research",
+            "without_term_id": 1,
+            "photos": "true",
+            "per_page": per_page,
+            "page": page,
+            "order_by": "observed_on",
+            "order": "desc",
+        }
+        try:
+            r = requests.get(INAT_API_URL, params=params)
+            r.raise_for_status()
+            batch = r.json().get('results', [])
+            if not batch:
+                break
+            results.extend(batch)
+            page += 1
+        except Exception as e:
+            logger.error(f"Error fetching page {page}: {e}")
+            break
+    return results
 
-def download_image(url, obs_id):
-    """Downloads the image to local disk."""
-    try:
-        response = requests.get(url, stream=True, timeout=30)
-        response.raise_for_status()
-
-        filename = f"{obs_id}.jpg"
-        filepath = IMAGE_DIR / filename
-
-        with open(filepath, 'wb') as f:
-            for chunk in response.iter_content(chunk_size=8192):
-                f.write(chunk)
-
-        logger.info(f"Downloaded image for observation {obs_id}")
-        return filename
-    except Exception as e:
-        logger.error(f"Error downloading image {url}: {e}")
-        return None
-
-
-def process_observation(conn, obs):
-    """Process a single observation: download image and save to database."""
-    obs_id = obs['id']
-
-    # Check if already processed
-    if observation_exists(conn, obs_id):
-        logger.info(f"Observation {obs_id} already exists in database, skipping")
-        return False
-
-    # Get photo URL
-    photos = obs.get('photos', [])
-    if not photos:
-        logger.warning(f"Observation {obs_id} has no photos, skipping")
-        return False
-
-    # Use 'large' size for better quality
-    photo_url = photos[0]['url'].replace('square', 'large')
-
-    # Download image
-    filename = download_image(photo_url, obs_id)
-    if not filename:
-        logger.error(f"Failed to download image for observation {obs_id}")
-        return False
-
-    # Save to database
-    success = save_observation(conn, obs, filename)
-    return success
-
+def get_existing_ids(conn):
+    """Get set of all observation IDs currently in DB."""
+    with conn.cursor() as cursor:
+        cursor.execute("SELECT observation_id FROM observations")
+        return {row[0] for row in cursor.fetchall()}
 
 def main():
     parser = argparse.ArgumentParser(
@@ -210,15 +232,13 @@ def main():
         '--max-attempts',
         type=int,
         default=None,
-        help='Maximum attempts to make (useful when many observations are already processed). Default: 3x the requested number'
+        help='Maximum attempts (unused in new logic)'
     )
 
     args = parser.parse_args()
+    target_count = args.num
 
-    batch_size = args.num
-    max_attempts = args.max_attempts or (batch_size * 3)
-
-    logger.info(f"Starting Monarch Observation Fetcher - requesting {batch_size} new observations")
+    logger.info(f"Starting Monarch Observation Fetcher - requesting {target_count} new observations")
 
     # Connect to database
     try:
@@ -228,35 +248,33 @@ def main():
         logger.error(f"Cannot proceed without database connection: {e}")
         return
 
-    processed_count = 0
-    attempts = 0
-
     try:
-        while processed_count < batch_size and attempts < max_attempts:
-            # Fetch a batch of observations
-            remaining = batch_size - processed_count
-            fetch_size = min(remaining * 2, 200)  # Fetch extra to account for duplicates
+        # 1. Get existing IDs to avoid re-fetching known ones
+        existing_ids = get_existing_ids(conn)
+        logger.info(f"Database contains {len(existing_ids)} existing observations")
 
-            observations = get_random_observations(fetch_size)
+        # 2. Build Candidate Pool
+        logger.info("Building candidate pool (10x target)...")
+        candidates = fetch_candidates(target_count, existing_ids)
+        logger.info(f"Collected {len(candidates)} candidates")
 
-            if not observations:
-                logger.warning("No observations returned from iNaturalist")
-                attempts += fetch_size
+        # 3. Shuffle
+        random.shuffle(candidates)
+
+        # 4. Process until target reached
+        processed_count = 0
+        for obs in candidates:
+            if processed_count >= target_count:
+                break
+            
+            # Double check existence (redundant but safe)
+            if obs['id'] in existing_ids:
                 continue
 
-            # Process each observation
-            for obs in observations:
-                if processed_count >= batch_size:
-                    break
-
-                attempts += 1
-                if process_observation(conn, obs):
-                    processed_count += 1
-                    logger.info(f"Progress: {processed_count}/{batch_size} observations processed")
-
-                if attempts >= max_attempts:
-                    logger.warning(f"Reached maximum attempts ({max_attempts})")
-                    break
+            if process_observation(conn, obs):
+                processed_count += 1
+                logger.info(f"Progress: {processed_count}/{target_count} observations processed")
+                existing_ids.add(obs['id'])
 
         logger.info(f"Completed: {processed_count} new observations added to database")
 
