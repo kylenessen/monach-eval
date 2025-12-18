@@ -235,7 +235,7 @@ def main():
         while processed_count < batch_size and attempts < max_attempts:
             # Fetch a batch of observations
             remaining = batch_size - processed_count
-            fetch_size = min(remaining * 2, 20)  # Fetch extra to account for duplicates
+            fetch_size = min(remaining * 2, 200)  # Fetch extra to account for duplicates
 
             observations = get_random_observations(fetch_size)
 
