@@ -7,8 +7,8 @@ A simplified tool to collect monarch butterfly observations from iNaturalist for
 1. Fetches random monarch butterfly observations from iNaturalist
 2. Downloads the observation images to local storage
 3. Stores observation metadata in a PostgreSQL database
-4. Tracks processed observations to avoid duplicates
-5. Prepares data for later annotation (e.g., with Label Studio)
+4. Provides Label Studio for manual annotation
+5. Stores annotations in the same database, linked to observations via image filenames
 
 ## Why This Approach?
 
@@ -59,27 +59,19 @@ Edit `.env` with your settings. At minimum, configure:
 
 Run the fetch script to download observations and store them in the database.
 
-**Option A: Run on host machine (requires Python 3.10+)**
+**Using Portainer Console (Recommended)**
+
+1. Open your Portainer web interface
+2. Navigate to **Containers**
+3. Find and click on **monarch-ingestor** container
+4. Click **Console** (or **Exec Console**)
+5. Select `/bin/bash` as the shell
+6. Click **Connect**
+7. Run the fetch script:
 
 ```bash
-pip install -r requirements.txt
+# Fetch 20 observations
 python scripts/fetch_observations.py -n 20
-```
-
-**Option B: Run in Docker (Recommended with Portainer)**
-
-```bash
-# Using docker-compose
-docker-compose run --rm ingestor python scripts/fetch_observations.py -n 20
-
-# Or exec into the container if using Portainer
-docker exec -it monarch-ingestor python scripts/fetch_observations.py -n 20
-```
-
-**Usage Options:**
-```bash
-# Fetch 10 observations (default)
-python scripts/fetch_observations.py
 
 # Fetch 50 observations
 python scripts/fetch_observations.py -n 50
@@ -88,21 +80,72 @@ python scripts/fetch_observations.py -n 50
 python scripts/fetch_observations.py -n 100 --max-attempts 500
 ```
 
-### 3. Query the Database
-
-You can connect to the database to view collected observations:
+**Alternative: Docker CLI**
 
 ```bash
-# Connect to PostgreSQL
-docker exec -it label-studio-db psql -U postgres -d postgres
+# If you have CLI access to your server
+docker exec -it monarch-ingestor python scripts/fetch_observations.py -n 20
+```
 
-# View all observations
-SELECT observation_id, observed_on, observer_login, location FROM observations LIMIT 10;
+### 3. Import Images into Label Studio
 
-# Count total observations
+After fetching observations, manually import the images into Label Studio:
+
+1. Log into Label Studio (https://monarch-eval.baywood-labs.com)
+2. Open your project
+3. Click **Import** button
+4. Select **Upload Files**
+5. Navigate to the local files directory: `/data/images/`
+6. Select all new `.jpg` files
+7. Click **Import**
+
+Label Studio will create tasks for each image.
+
+### 4. Query the Database
+
+You can connect to the database to view observations and annotations.
+
+**Using Portainer Console:**
+
+1. Open Portainer
+2. Navigate to the **label-studio-db** or **monarch-ingestor** container
+3. Open the console with `/bin/sh` or `/bin/bash`
+4. Run: `psql -U postgres -d postgres`
+
+**Useful Queries:**
+
+```sql
+-- Count total observations
 SELECT COUNT(*) FROM observations;
 
-# Exit psql
+-- View observations
+SELECT observation_id, observed_on, observer_login, location
+FROM observations
+LIMIT 10;
+
+-- Count annotations
+SELECT COUNT(*) FROM task_completion;
+
+-- View all annotations with full metadata
+SELECT
+    t.id as task_id,
+    tc.result::json->0->'value'->'choices'->>0 as life_stage,
+    o.observation_id,
+    o.observer_login,
+    o.observed_on,
+    o.location,
+    o.inat_url,
+    tc.created_at as annotated_at
+FROM task_completion tc
+JOIN task t ON tc.task_id = t.id
+JOIN observations o ON o.observation_id =
+    CAST(
+        regexp_replace(t.data->>'$undefined$', '.*images/(\d+)\.jpg.*', '\1')
+        AS BIGINT
+    )
+ORDER BY tc.created_at DESC;
+
+-- Exit psql
 \q
 ```
 
@@ -115,18 +158,25 @@ fetch_observations.py (batch fetching)
     ↓
 PostgreSQL Database (observations table)
     ↓
-Images stored in data/images/
+Images stored in data/images/ (filenames = observation_id.jpg)
     ↓
-[Future: Label Studio or other annotation tools]
+Manual import into Label Studio
     ↓
-[Future: Labels imported to labels table]
+Annotate in Label Studio UI
+    ↓
+PostgreSQL (task & task_completion tables)
+    ↓
+Query joins tasks → observations via filename
 ```
 
 **Components:**
-- **PostgreSQL** - Central database for all observation metadata and labels
-- **fetch_observations.py** - Python script to collect observations
-- **Label Studio** (optional) - Can be used for annotation
-- **Cloudflare Tunnel** (optional) - Remote access to Label Studio
+- **PostgreSQL** - Single database storing both observations AND Label Studio data
+- **fetch_observations.py** - Python script to collect observations from iNaturalist
+- **Label Studio** - Web UI for annotation (stores tasks in same PostgreSQL database)
+- **Cloudflare Tunnel** - Remote access to Label Studio
+- **monarch-ingestor** - Docker container with Python environment for running scripts
+
+**Key Insight:** Label Studio and your observations share the same PostgreSQL database. The connection between them is the image filename: `{observation_id}.jpg`. You can query everything together using SQL.
 
 ## Database Schema
 
@@ -152,9 +202,13 @@ The database has two main tables:
 
 ## Available Scripts
 
-### 1. fetch_observations.py
+### fetch_observations.py
 **Purpose:** Fetch random monarch observations from iNaturalist and store in database
 
+**Run via Portainer Console:**
+1. Portainer → Containers → monarch-ingestor → Console
+2. Select `/bin/bash` → Connect
+3. Run:
 ```bash
 python scripts/fetch_observations.py -n 50
 ```
@@ -165,31 +219,18 @@ python scripts/fetch_observations.py -n 50
 
 **What it does:**
 - Queries iNaturalist for research-grade monarchs without life stage data
-- Downloads images to `data/images/`
+- Downloads images to `data/images/{observation_id}.jpg`
 - Stores metadata in PostgreSQL `observations` table
 - Automatically skips duplicates based on `observation_id`
 
-### 2. sync_to_labelstudio.py
-**Purpose:** Push observations from database to Label Studio for annotation
-
+**Example:**
 ```bash
-python scripts/sync_to_labelstudio.py -n 50 --skip-duplicates
+# Fetch 20 new observations
+python scripts/fetch_observations.py -n 20
+
+# Fetch 100 with more retry attempts
+python scripts/fetch_observations.py -n 100 --max-attempts 500
 ```
-
-**Options:**
-- `-n, --num` - Number of observations to sync (default: all)
-- `--skip-duplicates` - Check Label Studio for existing tasks before syncing
-
-**What it does:**
-- Reads observations from PostgreSQL
-- Creates corresponding tasks in Label Studio
-- Uses local file paths (Label Studio serves them via mounted volume)
-- Includes metadata like observation_id, iNaturalist URL, date, location
-
-**Prerequisites:**
-- Label Studio must be running
-- `LABEL_STUDIO_API_TOKEN` and `LABEL_STUDIO_PROJECT_ID` must be configured
-- Project must have appropriate labeling configuration
 
 ## Troubleshooting
 
@@ -226,13 +267,13 @@ The fetch script:
 6. Checks for duplicates using `observation_id` as unique key
 7. Continues until the requested batch size is reached
 
-## Using Label Studio for Annotation (Optional)
+## Using Label Studio for Annotation
 
-Label Studio is already configured and running at `https://monarch-eval.baywood-labs.com`.
+Label Studio is running at `https://monarch-eval.baywood-labs.com` and shares the same PostgreSQL database as your observations.
 
-### 1. Verify Label Studio Configuration
+### 1. Label Studio Configuration
 
-Your Label Studio instance should have a project with this labeling config:
+Your Label Studio project should have this labeling config:
 
 ```xml
 <View>
@@ -244,58 +285,65 @@ Your Label Studio instance should have a project with this labeling config:
     <Choice value="Adult"/>
     <Choice value="Unknown"/>
   </Choices>
-  <Header value="Observation Details:"/>
-  <Text name="obs_id" value="$observation_id"/>
-  <HyperText name="url" value="$inat_url"/>
-  <Text name="date" value="$observed_on"/>
-  <Text name="observer" value="$observer"/>
-  <Text name="location" value="$location"/>
 </View>
 ```
 
-### 2. Get Your API Token
+### 2. Workflow
 
-1. Login to Label Studio at https://monarch-eval.baywood-labs.com
-2. Go to Account & Settings → Personal Access Token
-3. Copy the token and add it to your `.env` file as `LABEL_STUDIO_API_TOKEN`
-4. Note your Project ID (visible in the project URL)
-
-### 3. Sync Observations to Label Studio
-
-Use the sync script to push observations from the database to Label Studio:
-
+**Step 1: Fetch observations**
 ```bash
-# Sync all observations
-python scripts/sync_to_labelstudio.py
-
-# Sync only the latest 50 observations
-python scripts/sync_to_labelstudio.py -n 50
-
-# Check for duplicates before syncing (slower but safer)
-python scripts/sync_to_labelstudio.py --skip-duplicates
-
-# Or run in Docker
-docker-compose run --rm ingestor python scripts/sync_to_labelstudio.py -n 50
+# In Portainer → monarch-ingestor container console
+python scripts/fetch_observations.py -n 20
 ```
 
-### 4. Annotate in Label Studio
+**Step 2: Import images into Label Studio**
+1. Login to Label Studio
+2. Open your project
+3. Click **Import**
+4. Select **Upload Files**
+5. Choose files from `/data/images/` directory
+6. Click **Import**
 
-1. Open https://monarch-eval.baywood-labs.com
-2. Navigate to your project
-3. Start annotating observations with their life stages
-4. Label Studio automatically saves your annotations to its database
+**Step 3: Annotate**
+- Work through tasks in Label Studio UI
+- Select life stage for each monarch observation
+- Annotations automatically save to the database
 
-### 5. Import Labels Back to Database (Future)
+**Step 4: Query your data**
 
-After annotation, you can export labels from Label Studio and import them into the `labels` table. A helper script for this will be created when needed.
+Connect to the database via Portainer console (see "Query the Database" section above) and run:
+
+```sql
+-- View all annotations with metadata
+SELECT
+    t.id as task_id,
+    tc.result::json->0->'value'->'choices'->>0 as life_stage,
+    o.observation_id,
+    o.observer_login,
+    o.observed_on,
+    o.location,
+    o.inat_url
+FROM task_completion tc
+JOIN task t ON tc.task_id = t.id
+JOIN observations o ON o.observation_id =
+    CAST(
+        regexp_replace(t.data->>'$undefined$', '.*images/(\d+)\.jpg.*', '\1')
+        AS BIGINT
+    )
+ORDER BY tc.created_at DESC;
+```
+
+This query joins Label Studio's `task` and `task_completion` tables with your `observations` table using the observation_id extracted from the image filename.
 
 ## Project Philosophy
 
-This project was redesigned to be **SIMPLE and DECOUPLED**:
+This project uses a **SIMPLE, MANUAL WORKFLOW** that avoids API complexity:
 
-- **Database-first**: All data stored in PostgreSQL, not text files
-- **Batch processing**: Run the script when you need data, not continuously
-- **Separation of concerns**: Data collection separate from annotation
-- **Flexible integration**: Can use any annotation tool, not locked to Label Studio
+- **Database-first**: Everything in one PostgreSQL database (observations + Label Studio)
+- **Manual import**: No API calls - just upload files through Label Studio UI
+- **Filename-based linking**: Image filenames (`{observation_id}.jpg`) connect tasks to observations
+- **Query-based analysis**: Use SQL to join all your data together
+- **Portainer-managed**: Run scripts via Portainer console, no SSH needed
 - **Minimal dependencies**: Only `requests`, `python-dotenv`, and `psycopg2`
-- **Clear schema**: Easy to query and analyze data with SQL
+
+**Why avoid the Label Studio API?** The authentication layer is complex and unreliable. The manual workflow is faster and more transparent.
