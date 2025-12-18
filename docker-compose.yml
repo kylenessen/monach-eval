@@ -69,5 +69,6 @@ services:
       - LABEL_STUDIO_PROJECT_ID=${LABEL_STUDIO_PROJECT_ID:-1}
     volumes:
       - ./data:/app/data
+      - ./scripts:/app/scripts
     depends_on:
       - db
